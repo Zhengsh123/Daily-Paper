@@ -1,0 +1,284 @@
+# ==========================================
+# Daily arXiv Paper Tracker 配置文件
+# ==========================================
+
+# arXiv 分类列表
+# 常用分类: cs.AI, cs.CL, cs.CV, cs.LG, cs.RO, stat.ML, eess.SP
+# 完整列表: https://arxiv.org/category_taxonomy
+arxiv:
+  categories:
+    - cs.AI
+    - cs.CL
+    - cs.CV
+    - cs.LG
+  max_results: 200  # 每个分类最大查询数量
+
+# 关键词筛选配置
+filter:
+  # 在 title + abstract 中匹配的关键词（不区分大小写，自动扩展同义词）
+  # 例: 写 "LLM" 会自动匹配 "large language model" 等变体
+  keywords:
+    - "large language model"
+    - "LLM"
+    - "diffusion"
+    - "video"
+    - "multimodal"
+    - "agent"
+    - "world"
+    - "embodied"
+    - "action"
+  # 匹配模式: "any" = 匹配任一关键词, "all" = 匹配所有关键词
+  mode: "any"
+
+  # 排除分类标签：论文的任一标签命中则排除（检查所有 categories，不只是 primary）
+  exclude_categories:
+    - "cs.CR"   # 安全
+    - "cs.SE"   # 软件工程
+    - "cs.SD"   # 音频
+    - "eess.AS" # 语音
+    - "cs.NI"   # 网络
+    - "math.NA" # 数值分析
+
+  # 排除关键词：命中任一则排除该论文（同样支持同义词扩展）
+  # 用于过滤不感兴趣的领域
+  exclude_keywords:
+    # --- LLM 效率/压缩 ---
+    - "model compression"
+    - "quantization"
+    - "pruning"
+    - "knowledge distillation"
+    - "inference efficiency"
+    - "token reduction"
+    - "KV cache"
+    - "speculative decoding"
+    - "model sparsity"
+    # --- 医学/生物 ---
+    - "medical"
+    - "clinical"
+    - "healthcare"
+    - "diagnosis"
+    - "pathology"
+    - "radiology"
+    - "surgery"
+    - "patient"
+    - "biomedical"
+    - "EHR"
+    - "electronic health record"
+    # --- 生物/化学/药物 ---
+    - "protein"
+    - "molecular"
+    - "drug"
+    - "genomic"
+    - "gene expression"
+    - "cell segmentation"
+    - "biological sequence"
+    - "phylogenetic"
+    - "enzyme"
+    - "chemical synthesis"
+    - "retrosynthesis"
+    # --- 地理/遥感/气象 ---
+    - "geographic"
+    - "geospatial"
+    - "remote sensing"
+    - "satellite imagery"
+    - "land use"
+    - "weather forecast"
+    - "climate"
+    - "seismic"
+    - "ocean"
+    # --- 金融/经济 ---
+    - "stock market"
+    - "financial"
+    - "portfolio"
+    - "credit scoring"
+    - "fraud detection"
+    - "economic forecast"
+    # --- 法律 ---
+    - "legal"
+    - "court ruling"
+    - "legal reasoning"
+    - "statute"
+    # --- 教育 ---
+    - "student performance"
+    - "educational assessment"
+    - "tutoring system"
+    - "classroom"
+    # --- 农业/食品 ---
+    - "crop"
+    - "agriculture"
+    - "soil"
+    - "food safety"
+    - "livestock"
+    # --- 天文/物理（非CS） ---
+    - "astrophysic"
+    - "cosmolog"
+    - "dark matter"
+    - "galaxy"
+    - "particle physics"
+    - "quantum computing"
+    # --- 材料/土木/机械 ---
+    - "material science"
+    - "alloy"
+    - "structural engineering"
+    - "finite element"
+    - "fluid dynamics"
+    - "aerodynamic"
+    # --- 能源/电力系统 ---
+    - "power grid"
+    - "wind turbine"
+    - "solar panel"
+    - "battery degradation"
+    - "energy consumption forecast"
+    # --- 交通 ---
+    - "traffic"
+    - "traffic anomaly"
+    - "vehicle routing"
+    - "ride-hailing"
+    - "logistics optimization"
+    - "autonomous driving"
+    # --- 社科/心理/政治 ---
+    - "social survey"
+    - "political"
+    - "psycholog"
+    - "sociolog"
+    - "public opinion"
+    - "misinformation detection"
+    # --- 音乐/体育 ---
+    - "music generation"
+    - "sports analytics"
+    - "sports coaching"
+    - "athlete"
+    # --- 3D 重建 ---
+    - "3D reconstruction"
+    - "3D generation"
+    - "monocular 3D"
+    - "neural radiance"
+    - "NeRF"
+    - "gaussian splatting"
+    - "point cloud"
+    - "mesh reconstruction"
+    # --- 材质/光照 ---
+    - "material estimation"
+    - "illumination"
+    - "reflectance"
+    - "BRDF"
+    # --- GUI ---
+    - "GUI agent"
+    - "GUI"
+    - "GUI navigation"
+    - "web agent"
+    - "UI automation"
+    # --- 图/Graph ---
+    - "graph neural"
+    - "graph isomorphism"
+    - "graph learning"
+    - "knowledge graph"
+    # --- 越狱/对抗攻击 ---
+    - "jailbreak"
+    - "adversarial attack"
+    - "red teaming"
+    - "prompt injection"
+    # --- 安全/隐私 ---
+    - "safety"
+    - "safety judgment"
+    - "content safety"
+    - "privacy"
+    - "de-anonymization"
+    - "membership inference"
+    - "differential privacy"
+    - "federated learning"
+    - "secure aggregation"
+    - "watermark"
+    - "deepfake detection"
+    - "fingerprint"
+    # --- 检索/RAG ---
+    - "retrieval augmented"
+    - "retrieval-augmented"
+    - "dense retrieval"
+    - "query rewriting"
+    - "document retrieval"
+    # --- 对齐/Alignment ---
+    - "preference optimization"
+    - "alignment"
+    - "value alignment"
+    - "DPO"
+    # --- 对话 ---
+    - "dialogue system"
+    - "conversational"
+    - "chatbot"
+    - "open-domain dialogue"
+    - "Diagnostic"
+    # --- 导航 ---
+    - "navigation"
+    - "embodied exploration"
+    - "path finding"
+    - "object goal"
+    - "visual navigation"
+    - "face"
+    - "audio"
+    - "gpu"
+    - "game"
+    - "data augmentation"
+    - "semantic segmentation"
+    # --- 时序/案例/翻译/多语种 ---
+    - "time series"
+    - "time-series"
+    - "temporal forecasting"
+    - "case study"
+    - "multilingual"
+    - "cross-lingual"
+    - "lingual"
+    - "machine translation"
+    - "translation quality"
+    - "low-resource language"
+    - "govern"
+    - "linguistic"
+    # --- 黑盒 ---
+    - "black box"
+    - "black-box"
+
+
+  # 自定义同义词（补充内置同义词表）
+  # aliases:
+  #   "image editing": ["image manipulation", "photo editing"]
+
+# LLM 摘要配置（通过 OpenAI 兼容协议，支持任意大模型）
+llm:
+  # API 地址（任何 OpenAI 兼容的 endpoint 都可以）
+  # Claude:    https://api.anthropic.com/v1
+  # OpenAI:    https://api.openai.com/v1
+  # DeepSeek:  https://api.deepseek.com/v1
+  # Qwen:      https://dashscope.aliyuncs.com/compatible-mode/v1
+  # 本地 Ollama: http://localhost:11434/v1
+  base_url: "https://api.anthropic.com"
+
+  # API Key: 直接填写，或通过 api_key_env 指定环境变量名
+  api_key: ""
+  # api_key_env: "LLM_API_KEY"  # 也可用环境变量，优先级低于 api_key
+
+  # 模型名称（按你的 API 提供商填写）
+  model: "claude-sonnet-4-20250514"
+
+  # 每篇论文摘要的最大token数
+  max_tokens: 4096
+  # 并发请求数（同时调用 LLM API 的线程数）
+  concurrency: 5
+  # 总结语言
+  language: "中文"
+
+# 邮件通知配置
+email:
+  enabled: false
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  sender: "your_email@gmail.com"
+  # 密码通过环境变量 EMAIL_PASSWORD 设置
+  recipients:
+    - "recipient@example.com"
+  subject_prefix: "[Daily Paper]"
+
+# 输出配置
+output:
+  dir: "outputs"
+  # 报告文件名格式 (strftime)
+  filename_format: "%Y-%m-%d.md"
