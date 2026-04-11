@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''deep_summary.py'', doraise=True\\); print\\(''Syntax OK''\\)\")",
+      "Bash(python main.py --no-email)",
+      "Bash(python server.py)"
+    ]
+  }
+}

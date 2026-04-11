@@ -3,14 +3,60 @@
 import os
 import re
 import base64
+import time
 import yaml
 import anthropic
 import urllib.request
+import urllib.error
+import fitz  # PyMuPDF
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
+# PDF 分段阈值
+MAX_PDF_BYTES = 20 * 1024 * 1024   # 20MB，超过此大小则分段
+MAX_PAGES_PER_SEGMENT = 30          # 每段最多页数
+
+# 下载重试配置
+MAX_RETRIES = 3
+RETRY_BACKOFF = 2  # 指数退避基数（秒）
+
+
 DEEP_SUMMARY_PROMPT = """你是一位资深AI研究员。请对这篇论文进行精炼的深度分析。
+
+请用{language}按以下格式输出，总字数控制在500字以内，不要使用LaTeX公式，用纯文字描述数学概念：
+
+## 一句话总结
+（一句话概括核心贡献）
+
+## 研究动机
+（要解决什么问题？现有方法的不足？2-3句话）
+
+## 核心方法
+（论文提出的关键方法和创新设计，用简洁的文字描述，避免公式）
+
+## 实验结果
+（关键实验结论和数据指标，用文字表述，不用表格）
+
+## 优势与局限
+- 优势：（1-2点）
+- 局限：（1-2点）
+"""
+
+
+SEGMENT_SUMMARY_PROMPT = """你是一位资深AI研究员。这是一篇论文PDF的第{seg_idx}部分（共{seg_total}部分）。
+请用{language}提取这部分的关键信息，包括：
+- 这部分涉及的核心内容（方法、实验、结论等）
+- 重要的数据指标和发现
+- 关键概念和术语
+
+请直接输出要点，不需要格式化标题，控制在300字以内。不要使用LaTeX公式。"""
+
+
+MERGE_SUMMARY_PROMPT = """你是一位资深AI研究员。以下是同一篇论文各部分的分段摘要。
+请将它们综合为一份完整的深度分析。
+
+{segment_summaries}
 
 请用{language}按以下格式输出，总字数控制在500字以内，不要使用LaTeX公式，用纯文字描述数学概念：
 
@@ -54,20 +100,159 @@ def _to_pdf_url(url: str) -> str:
 
 
 def _download_pdf(pdf_url: str) -> bytes:
-    """下载PDF文件并返回字节内容"""
+    """下载PDF文件并返回字节内容，带重试机制"""
     req = urllib.request.Request(pdf_url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return resp.read()
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                return resp.read()
+        except (urllib.error.URLError, OSError, TimeoutError) as e:
+            if attempt < MAX_RETRIES:
+                wait = RETRY_BACKOFF ** attempt
+                print(f"[DeepSummary] 下载失败(第{attempt}次)，{wait}秒后重试: {e}")
+                time.sleep(wait)
+            else:
+                raise
+
+
+def _need_split(pdf_data: bytes) -> bool:
+    """判断 PDF 是否需要分段处理"""
+    if len(pdf_data) > MAX_PDF_BYTES:
+        return True
+    doc = fitz.open(stream=pdf_data, filetype="pdf")
+    page_count = len(doc)
+    doc.close()
+    return page_count > MAX_PAGES_PER_SEGMENT * 2
+
+
+def _split_pdf(pdf_data: bytes) -> list[bytes]:
+    """将 PDF 按页数拆分为多个片段，每段返回 PDF bytes"""
+    doc = fitz.open(stream=pdf_data, filetype="pdf")
+    total_pages = len(doc)
+    segments = []
+    for start in range(0, total_pages, MAX_PAGES_PER_SEGMENT):
+        end = min(start + MAX_PAGES_PER_SEGMENT, total_pages)
+        seg_doc = fitz.open()
+        seg_doc.insert_pdf(doc, from_page=start, to_page=end - 1)
+        segments.append(seg_doc.tobytes())
+        seg_doc.close()
+    doc.close()
+    return segments
+
+
+def _extract_text_fallback(pdf_data: bytes) -> str:
+    """兜底：提取 PDF 纯文本"""
+    doc = fitz.open(stream=pdf_data, filetype="pdf")
+    text = "\n".join(page.get_text() for page in doc)
+    doc.close()
+    return text
+
+
+def _summarize_segment(seg_data: bytes, seg_idx: int, seg_total: int,
+                       client: anthropic.Anthropic, model: str,
+                       max_tokens: int, language: str) -> str:
+    """对单个 PDF 片段进行总结"""
+    seg_b64 = base64.standard_b64encode(seg_data).decode("ascii")
+    msg = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": seg_b64,
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": SEGMENT_SUMMARY_PROMPT.format(
+                        seg_idx=seg_idx, seg_total=seg_total, language=language
+                    ),
+                },
+            ],
+        }],
+    )
+    return msg.content[0].text
+
+
+def _merge_segment_summaries(summaries: list[str], client: anthropic.Anthropic,
+                             model: str, max_tokens: int, language: str) -> str:
+    """将各段摘要合并为完整的深度总结"""
+    combined = "\n\n---\n\n".join(
+        f"【第{i+1}部分】\n{s}" for i, s in enumerate(summaries)
+    )
+    msg = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[{
+            "role": "user",
+            "content": MERGE_SUMMARY_PROMPT.format(
+                segment_summaries=combined, language=language
+            ),
+        }],
+    )
+    return msg.content[0].text
+
+
+def _deep_summarize_split(pdf_data: bytes, pdf_url: str,
+                          client: anthropic.Anthropic, model: str,
+                          max_tokens: int, language: str) -> str:
+    """大 PDF 分段总结流程"""
+    segments = _split_pdf(pdf_data)
+    seg_total = len(segments)
+    print(f"[DeepSummary] PDF过大，分{seg_total}段处理: {pdf_url}")
+
+    seg_summaries = []
+    for i, seg_data in enumerate(segments):
+        seg_b64_size = len(seg_data) * 4 // 3
+        # 如果单段仍然过大（图片极多），fallback 到纯文本
+        if seg_b64_size > MAX_PDF_BYTES:
+            print(f"[DeepSummary] 第{i+1}段仍过大，使用纯文本提取")
+            text = _extract_text_fallback(seg_data)
+            msg = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                messages=[{
+                    "role": "user",
+                    "content": SEGMENT_SUMMARY_PROMPT.format(
+                        seg_idx=i + 1, seg_total=seg_total, language=language
+                    ) + "\n\n以下是论文此部分的文本内容：\n\n" + text[:30000],
+                }],
+            )
+            seg_summaries.append(msg.content[0].text)
+        else:
+            print(f"[DeepSummary] 总结第{i+1}/{seg_total}段...")
+            summary = _summarize_segment(
+                seg_data, i + 1, seg_total, client, model, max_tokens, language
+            )
+            seg_summaries.append(summary)
+
+    # 合并各段
+    print(f"[DeepSummary] 合并{seg_total}段摘要...")
+    return _merge_segment_summaries(seg_summaries, client, model, max_tokens, language)
 
 
 def deep_summarize_one(url: str, client: anthropic.Anthropic,
                        model: str, max_tokens: int, language: str) -> str:
-    """对单篇论文进行基于PDF的深度总结"""
+    """对单篇论文进行基于PDF的深度总结，大文件自动分段处理"""
     pdf_url = _to_pdf_url(url)
     print(f"[DeepSummary] 正在下载: {pdf_url}")
     pdf_data = _download_pdf(pdf_url)
+    print(f"[DeepSummary] 已下载: {pdf_url} ({len(pdf_data)//1024}KB)")
+
+    # 大 PDF 走分段流程
+    if _need_split(pdf_data):
+        return _deep_summarize_split(
+            pdf_data, pdf_url, client, model, max_tokens, language
+        )
+
+    # 小 PDF 直接发送
     pdf_b64 = base64.standard_b64encode(pdf_data).decode("ascii")
-    print(f"[DeepSummary] 正在总结: {pdf_url} ({len(pdf_data)//1024}KB)")
+    print(f"[DeepSummary] 正在总结: {pdf_url}")
 
     msg = client.messages.create(
         model=model,
