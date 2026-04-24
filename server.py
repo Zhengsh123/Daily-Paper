@@ -46,10 +46,27 @@ def _compute_target_date() -> date:
 
 
 def _target_report(output_dir="outputs"):
-    """找到当前 target_date 对应的日报文件"""
-    target_str = _compute_target_date().isoformat()
+    """找到当前 target_date 对应的日报文件，支持 TARGET_DATE 环境变量覆盖。
+    若计算日期无报告则自动回退到最近一份。"""
+    override = os.environ.get("TARGET_DATE", "").strip()
+    if override:
+        target_str = override
+    else:
+        target_str = _compute_target_date().isoformat()
+
     path = os.path.join(output_dir, f"{target_str}.md")
-    return path if os.path.exists(path) else None
+    if os.path.exists(path):
+        return path
+
+    # 回退：找最近一份日报
+    files = sorted(
+        [f for f in os.listdir(output_dir)
+         if f.endswith(".md") and not f.endswith("_deep.md") and f[0] == "2"],
+        reverse=True,
+    )
+    if files:
+        return os.path.join(output_dir, files[0])
+    return None
 
 
 @app.route("/")
